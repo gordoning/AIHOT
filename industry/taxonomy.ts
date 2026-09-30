@@ -31,9 +31,7 @@ export const CATEGORY_TAGS = [
 ] as const;
 
 /** 可选的主题标签。 */
-export const TOPIC_TAGS = [
-  "Agent", "编码", "推理", "多模态", "语音", "视频", "图像生成", "RAG", "端侧", "数据/训练", "搜索", "部署/工程", "开源生态", "具身智能", "MCP/工具调用",
-] as const;
+export const TOPIC_TAGS = ["Agent"] as const;
 
 /** 可选的实体标签（公司、机构、平台）。 */
 export const ENTITY_TAGS = ["OpenAI", "Anthropic", "DeepSeek", "DeepMind", "Google", "Meta", "Microsoft", "xAI", "Hugging Face", "GitHub", "arXiv"] as const;
