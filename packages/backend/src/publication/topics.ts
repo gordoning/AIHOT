@@ -17,6 +17,25 @@ export interface TopicRow {
   position: number;
 }
 
+export interface TopicGroup {
+  key: "company" | "field" | "genre";
+  name: string;
+  blurb: string;
+}
+
+interface TopicPack {
+  groups: TopicGroup[];
+  topics: Array<{ slug: string; name: string; group: string; entityId?: string | null; tags: string[]; definition: string; related?: string[] }>;
+}
+
+function readTopicPack(): TopicPack {
+  return JSON.parse(readFileSync(path.join(REPO_ROOT, "industry/topics.json"), "utf8")) as TopicPack;
+}
+
+export function listTopicGroups(): TopicGroup[] {
+  return readTopicPack().groups;
+}
+
 type TopicCount = { slug: string; total: number; recent: number; pages: number; indexable: boolean; latest: Date | null };
 const topicsCache = cached(
   () => sql<TopicRow[]>`SELECT slug, name, grp, entity_id, tags, definition, related, position FROM topics ORDER BY position`,
@@ -27,20 +46,22 @@ const countsCache = cached(queryTopicCounts, { freshMs: 60_000, maxStaleMs: 10 *
 
 /**
  * The topics (stable slugs, names, definitions, related topics) come from the industry pack
- * (industry/topics.json); every environment seeds them from there. Re-runnable.
+ * (industry/topics.json); every environment syncs the directory from there. Re-runnable.
  */
 export async function seedTopics(): Promise<number> {
-  const data = JSON.parse(readFileSync(path.join(REPO_ROOT, "industry/topics.json"), "utf8")) as {
-    topics: Array<{ slug: string; name: string; group: string; entityId?: string | null; tags: string[]; definition: string; related?: string[] }>;
-  };
-  let position = 0;
-  for (const t of data.topics) {
-    await sql`
-      INSERT INTO topics (slug, name, grp, entity_id, tags, definition, related, position)
-      VALUES (${t.slug}, ${t.name}, ${t.group}, ${t.entityId ?? null}, ${t.tags}, ${t.definition}, ${t.related ?? []}, ${position++})
-      ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, grp = EXCLUDED.grp, entity_id = EXCLUDED.entity_id,
-        tags = EXCLUDED.tags, definition = EXCLUDED.definition, related = EXCLUDED.related, position = EXCLUDED.position`;
-  }
+  const data = readTopicPack();
+  const slugs = data.topics.map((t) => t.slug);
+  await sql.begin(async (tx) => {
+    await tx`DELETE FROM topics WHERE slug NOT IN ${tx(slugs)}`;
+    let position = 0;
+    for (const t of data.topics) {
+      await tx`
+        INSERT INTO topics (slug, name, grp, entity_id, tags, definition, related, position)
+        VALUES (${t.slug}, ${t.name}, ${t.group}, ${t.entityId ?? null}, ${t.tags}, ${t.definition}, ${t.related ?? []}, ${position++})
+        ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, grp = EXCLUDED.grp, entity_id = EXCLUDED.entity_id,
+          tags = EXCLUDED.tags, definition = EXCLUDED.definition, related = EXCLUDED.related, position = EXCLUDED.position`;
+    }
+  });
   topicsCache.clear();
   countsCache.clear();
   return data.topics.length;
